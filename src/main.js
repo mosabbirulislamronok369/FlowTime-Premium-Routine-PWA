@@ -134,16 +134,55 @@ function bind(){
   document.querySelectorAll("[data-goal]").forEach(b=>b.addEventListener("click",()=>{const g=state.goals.find(x=>x.id===b.dataset.goal);g.done=!g.done;save();render()}));
   document.querySelectorAll("[data-edit]").forEach(b=>b.addEventListener("click",()=>openRoutine(state.routines.find(x=>x.id===b.dataset.edit))));
   $("#finishBtn")?.addEventListener("click",()=>{state.active=null;save();render()});
-  $("#pauseBtn")?.addEventListener("click",()=>{state.active.paused=!state.active.paused; if(!state.active.paused) state.active.lastResume=Date.now(); save();render()});
+  $("#pauseBtn")?.addEventListener("click",pauseActive);
   $("#plus5")?.addEventListener("click",()=>extendActive(5));
   $("#plus10")?.addEventListener("click",()=>extendActive(10));
 }
 function startRoutine(id){
   const r=state.routines.find(x=>x.id===id); if(!r)return;
-  state.active={routineId:id,endsAt:Date.now()+durationMs(r),lastResume:Date.now(),paused:false}; save(); speak(`${r.title} শুরু হয়েছে।`); render();
+  const total=durationMs(r);
+  state.active={routineId:id,endsAt:Date.now()+total,remainingMs:total,lastResume:Date.now(),paused:false,totalMs:total};
+  save(); speak(`${r.title} শুরু হয়েছে।`); render(); updateActiveTimer();
 }
 function extendActive(min){
-  if(state.active){state.active.endsAt+=min*60000;save();render();speak(`আরও ${min} মিনিট যোগ করা হয়েছে।`)}
+  if(!state.active)return;
+  const extra=min*60000;
+  if(state.active.paused){
+    state.active.remainingMs=(state.active.remainingMs||0)+extra;
+    state.active.totalMs=(state.active.totalMs||0)+extra;
+  }else{
+    state.active.endsAt+=extra;
+    state.active.remainingMs=Math.max(0,state.active.endsAt-Date.now());
+    state.active.totalMs=(state.active.totalMs||0)+extra;
+  }
+  save(); render(); speak(`আরও ${min} মিনিট যোগ করা হয়েছে।`); updateActiveTimer();
+}
+function pauseActive(){
+  if(!state.active)return;
+  if(state.active.paused){
+    const remaining=Math.max(0,state.active.remainingMs||0);
+    state.active.endsAt=Date.now()+remaining;
+    state.active.lastResume=Date.now();
+    state.active.paused=false;
+  }else{
+    state.active.remainingMs=Math.max(0,state.active.endsAt-Date.now());
+    state.active.paused=true;
+  }
+  save(); render(); updateActiveTimer();
+}
+function updateActiveTimer(){
+  const a=state.active;
+  if(!a)return;
+  const r=state.routines.find(x=>x.id===a.routineId);
+  if(!r)return;
+  const remaining=a.paused?Math.max(0,a.remainingMs||0):Math.max(0,a.endsAt-Date.now());
+  const t=$("#timer");
+  if(t)t.textContent=timeLeft(remaining);
+  const p=document.querySelector(".progress span");
+  if(p){
+    const total=Math.max(1,a.totalMs||durationMs(r));
+    p.style.width=Math.min(100,Math.max(0,(1-remaining/total)*100))+"%";
+  }
 }
 function openGoal(){
   $("#modal").innerHTML=`<div class="modal-bg"><form class="modal"><div class="modal-head"><h2>New goal</h2><button type="button" class="close" id="close">×</button></div><label>Goal<input id="goalTitle" required placeholder="যেমন: সপ্তাহে ৩টি ভিডিও এডিট"></label><button class="primary full">Save goal</button></form></div>`;
@@ -166,11 +205,17 @@ function openRoutine(existing){
   $(".modal").onsubmit=e=>{e.preventDefault();state.reminderMinutes=Number($("#rem").value);const item={...r,id:r.id||uid(),title:$("#title").value.trim(),kind:$("#kind").value,date:$("#date").value,start:$("#start").value,end:$("#end").value,days:[...document.querySelectorAll("#daysWrap input:checked")].map(x=>Number(x.value))}; if(item.kind==="weekly"&&!item.days.length)return alert("Select at least one day."); if(existing)Object.assign(existing,item);else state.routines.push(item);save();scheduleRoutineNotifications(item);render()};
 }
 setInterval(()=>{
-  if(state.active && !state.active.paused){
-    if(Date.now()>=state.active.endsAt){const r=state.routines.find(x=>x.id===state.active.routineId);state.active=null;save();speak(`${r?.title||"কাজ"} শেষ হয়েছে।`);render()}
-    else {const t=$("#timer"); if(t)t.textContent=timeLeft(state.active.endsAt-Date.now()); const p=document.querySelector(".progress span"); if(p){const r=state.routines.find(x=>x.id===state.active.routineId); if(r)p.style.width=Math.min(100,Math.max(0,100-(state.active.endsAt-Date.now())/durationMs(r)*100))}}
+  if(!state.active)return;
+  if(!state.active.paused && Date.now()>=state.active.endsAt){
+    const r=state.routines.find(x=>x.id===state.active.routineId);
+    state.active=null;
+    save();
+    speak(`${r?.title||"কাজ"} শেষ হয়েছে।`);
+    render();
+    return;
   }
-},500);
+  updateActiveTimer();
+},250);
 
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
 render();
