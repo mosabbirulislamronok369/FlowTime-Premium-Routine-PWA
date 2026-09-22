@@ -1,0 +1,13 @@
+{
+  "name": "FlowTime",
+  "short_name": "FlowTime",
+  "description": "Personal routine, goals and focus timer",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "lang": "bn",
+  "icons": [
+    {"src":"./icons/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
